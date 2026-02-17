@@ -4,6 +4,7 @@
 #include <Shlwapi.h>
 #include <Windows.h>
 
+#include <cwchar>
 #include <new>
 
 #pragma comment(lib, "Ole32.lib")
@@ -19,7 +20,7 @@ const wchar_t* kThumbnailProviderName = L"Naiv4Vibe Thumbnail Provider";
 class VibeClassFactory final : public IClassFactory {
  public:
   VibeClassFactory() : ref_count_(1) { InterlockedIncrement(&g_module_ref_count); }
-  ~VibeClassFactory() override { InterlockedDecrement(&g_module_ref_count); }
+  ~VibeClassFactory() { InterlockedDecrement(&g_module_ref_count); }
 
   IFACEMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
     if (!ppv) return E_POINTER;
@@ -83,13 +84,13 @@ HRESULT RegisterInprocServer() {
   }
 
   wchar_t clsid_path[128] = {};
-  swprintf_s(clsid_path, L"CLSID\\%s", kThumbnailProviderClsid);
+  swprintf_s(clsid_path, _countof(clsid_path), L"CLSID\\%s", kThumbnailProviderClsid);
 
   HRESULT hr = SetStringValue(HKEY_CLASSES_ROOT, clsid_path, nullptr, kThumbnailProviderName);
   if (FAILED(hr)) return hr;
 
   wchar_t inproc_path[256] = {};
-  swprintf_s(inproc_path, L"%s\\InprocServer32", clsid_path);
+  swprintf_s(inproc_path, _countof(inproc_path), L"%s\\InprocServer32", clsid_path);
   hr = SetStringValue(HKEY_CLASSES_ROOT, inproc_path, nullptr, module_path);
   if (FAILED(hr)) return hr;
 
@@ -105,7 +106,7 @@ void UnregisterInprocServer() {
   SHDeleteKeyW(HKEY_CLASSES_ROOT, L".naiv4vibe\\ShellEx\\{E357FCCD-A995-4576-B01F-234630154E96}");
 
   wchar_t clsid_path[128] = {};
-  swprintf_s(clsid_path, L"CLSID\\%s", kThumbnailProviderClsid);
+  swprintf_s(clsid_path, _countof(clsid_path), L"CLSID\\%s", kThumbnailProviderClsid);
   SHDeleteKeyW(HKEY_CLASSES_ROOT, clsid_path);
 }
 
