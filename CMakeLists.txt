@@ -8,6 +8,7 @@ if(NOT WIN32)
 endif()
 
 add_library(naiv4vibe_thumbnail_provider SHARED
+  src/Naiv4VibeThumbnailProvider.def
   src/dllmain.cpp
   src/ThumbnailProvider.cpp
 )

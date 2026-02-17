@@ -137,6 +137,9 @@ HRESULT DecodeImageToBitmap(const std::vector<BYTE>& image_data, UINT cx, HBITMA
       scaled_height = cx;
       scaled_width = (width * cx) / height;
     }
+
+    scaled_width = std::max(1u, scaled_width);
+    scaled_height = std::max(1u, scaled_height);
   }
 
   ComPtr<IWICBitmapScaler> scaler;
