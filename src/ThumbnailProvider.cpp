@@ -221,9 +221,11 @@ bool DecodeJsonString(std::string_view text, size_t quote_pos, std::string* out,
 bool TryGetJsonStringField(std::string_view json, std::string_view field_name, std::string* value) {
   if (!value || field_name.empty()) return false;
 
+  constexpr size_t kMaxJsonNestingDepth = 256;
+
   const auto skip_json_value =
-      [&](auto&& self, size_t pos, size_t* end_pos) -> bool {
-    if (!end_pos) return false;
+      [&](auto&& self, size_t pos, size_t depth, size_t* end_pos) -> bool {
+    if (!end_pos || depth > kMaxJsonNestingDepth) return false;
 
     pos = SkipJsonWhitespace(json, pos);
     if (pos >= json.size()) return false;
@@ -251,7 +253,7 @@ bool TryGetJsonStringField(std::string_view json, std::string_view field_name, s
         if (cursor >= json.size() || json[cursor] != ':') return false;
 
         size_t value_end = cursor;
-        if (!self(self, cursor + 1, &value_end)) return false;
+        if (!self(self, cursor + 1, depth + 1, &value_end)) return false;
         cursor = SkipJsonWhitespace(json, value_end);
         if (cursor >= json.size()) return false;
         if (json[cursor] == '}') {
@@ -275,7 +277,7 @@ bool TryGetJsonStringField(std::string_view json, std::string_view field_name, s
 
       while (cursor < json.size()) {
         size_t element_end = cursor;
-        if (!self(self, cursor, &element_end)) return false;
+        if (!self(self, cursor, depth + 1, &element_end)) return false;
         cursor = SkipJsonWhitespace(json, element_end);
         if (cursor >= json.size()) return false;
         if (json[cursor] == ']') {
@@ -367,7 +369,7 @@ bool TryGetJsonStringField(std::string_view json, std::string_view field_name, s
     }
 
     size_t value_end = value_start;
-    if (!skip_json_value(skip_json_value, value_start, &value_end)) return false;
+    if (!skip_json_value(skip_json_value, value_start, 0, &value_end)) return false;
 
     cursor = SkipJsonWhitespace(json, value_end);
     if (cursor >= json.size()) return false;
