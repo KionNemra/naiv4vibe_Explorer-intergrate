@@ -23,7 +23,7 @@ Windows Explorer `.naiv4vibe` 缩略图处理器（In-proc COM DLL）。
 
 - CMake 3.20+
 - MSVC x64
-- 首次配置会通过 CMake `FetchContent` 自动下载 `nlohmann/json`
+- 无需额外第三方库（已移除 `nlohmann/json` 依赖，离线可直接配置）
 
 ## 构建
 
@@ -49,6 +49,7 @@ cmake --build build --config Release
 
 - `source directory ... does not appear to contain CMakeLists.txt`：说明当前目录不对。请先 `cd` 到仓库根目录再执行。
 - `.../build is not a directory`：通常是先执行了 `cmake --build build`，但还没先 `cmake -S . -B build -A x64` 配置生成。
+- `nlohmann_json not found locally, falling back to FetchContent` 后长时间无响应：请更新到当前版本后重新配置，已不再依赖在线下载。
 
 ## 安装/卸载
 

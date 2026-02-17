@@ -7,8 +7,8 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -73,6 +73,97 @@ std::string StripDataUrlPrefix(const std::string& input) {
   auto comma = input.find(',');
   if (comma == std::string::npos) return input;
   return input.substr(comma + 1);
+}
+
+size_t SkipJsonWhitespace(std::string_view text, size_t pos) {
+  while (pos < text.size() && std::isspace(static_cast<unsigned char>(text[pos]))) {
+    ++pos;
+  }
+  return pos;
+}
+
+bool DecodeJsonString(std::string_view text, size_t quote_pos, std::string* out, size_t* end_pos) {
+  if (!out || !end_pos || quote_pos >= text.size() || text[quote_pos] != '"') return false;
+
+  std::string decoded;
+  size_t i = quote_pos + 1;
+  while (i < text.size()) {
+    char ch = text[i++];
+    if (ch == '"') {
+      *out = std::move(decoded);
+      *end_pos = i;
+      return true;
+    }
+
+    if (ch != '\\') {
+      decoded.push_back(ch);
+      continue;
+    }
+
+    if (i >= text.size()) return false;
+    char escaped = text[i++];
+    switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+        decoded.push_back(escaped);
+        break;
+      case 'b':
+        decoded.push_back('\b');
+        break;
+      case 'f':
+        decoded.push_back('\f');
+        break;
+      case 'n':
+        decoded.push_back('\n');
+        break;
+      case 'r':
+        decoded.push_back('\r');
+        break;
+      case 't':
+        decoded.push_back('\t');
+        break;
+      case 'u':
+        if (i + 3 >= text.size()) return false;
+        i += 4;
+        decoded.push_back('?');
+        break;
+      default:
+        return false;
+    }
+  }
+
+  return false;
+}
+
+bool TryGetJsonStringField(std::string_view json, std::string_view field_name, std::string* value) {
+  if (!value || field_name.empty()) return false;
+
+  std::string needle = "\"";
+  needle.append(field_name);
+  needle.push_back('"');
+
+  size_t pos = 0;
+  while (true) {
+    pos = json.find(needle, pos);
+    if (pos == std::string_view::npos) return false;
+
+    size_t cursor = SkipJsonWhitespace(json, pos + needle.size());
+    if (cursor >= json.size() || json[cursor] != ':') {
+      pos += needle.size();
+      continue;
+    }
+
+    cursor = SkipJsonWhitespace(json, cursor + 1);
+    if (cursor >= json.size() || json[cursor] != '"') {
+      pos += needle.size();
+      continue;
+    }
+
+    size_t end_pos = cursor;
+    if (!DecodeJsonString(json, cursor, value, &end_pos)) return false;
+    return true;
+  }
 }
 
 std::wstring AsciiToWide(const std::string& value) {
@@ -236,18 +327,18 @@ IFACEMETHODIMP VibeThumbnailProvider::GetThumbnail(UINT cx, HBITMAP* phbmp, WTS_
   std::string json_content = ReadAllBytes(stream_);
   if (json_content.empty()) return E_FAIL;
 
+  std::string thumbnail;
+  std::string image;
+  const bool has_thumbnail = TryGetJsonStringField(json_content, "thumbnail", &thumbnail);
+  const bool has_image = TryGetJsonStringField(json_content, "image", &image);
+
   std::string encoded_image;
-  try {
-    nlohmann::json parsed = nlohmann::json::parse(json_content);
-    if (parsed.contains("thumbnail") && parsed["thumbnail"].is_string() && cx <= 512) {
-      encoded_image = StripDataUrlPrefix(parsed["thumbnail"].get<std::string>());
-    } else if (parsed.contains("image") && parsed["image"].is_string()) {
-      encoded_image = StripDataUrlPrefix(parsed["image"].get<std::string>());
-    } else if (parsed.contains("thumbnail") && parsed["thumbnail"].is_string()) {
-      encoded_image = StripDataUrlPrefix(parsed["thumbnail"].get<std::string>());
-    }
-  } catch (...) {
-    return E_FAIL;
+  if (has_thumbnail && cx <= 512) {
+    encoded_image = StripDataUrlPrefix(thumbnail);
+  } else if (has_image) {
+    encoded_image = StripDataUrlPrefix(image);
+  } else if (has_thumbnail) {
+    encoded_image = StripDataUrlPrefix(thumbnail);
   }
 
   if (encoded_image.empty()) return E_FAIL;
