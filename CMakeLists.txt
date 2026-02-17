@@ -29,10 +29,17 @@ set_target_properties(naiv4vibe_thumbnail_provider PROPERTIES
 )
 
 
-FetchContent_Declare(
-  nlohmann_json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-)
-FetchContent_MakeAvailable(nlohmann_json)
+find_package(nlohmann_json CONFIG QUIET)
+
+if(NOT nlohmann_json_FOUND)
+  message(STATUS "nlohmann_json not found locally, falling back to FetchContent")
+  FetchContent_Declare(
+    nlohmann_json
+    URL
+      https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+      https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.11.3
+  )
+  FetchContent_MakeAvailable(nlohmann_json)
+endif()
 
 target_link_libraries(naiv4vibe_thumbnail_provider PRIVATE nlohmann_json::nlohmann_json)
