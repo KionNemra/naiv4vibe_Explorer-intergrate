@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -82,6 +83,58 @@ size_t SkipJsonWhitespace(std::string_view text, size_t pos) {
   return pos;
 }
 
+bool ParseHex4(std::string_view text, size_t pos, uint16_t* value) {
+  if (!value || pos + 4 > text.size()) return false;
+
+  uint16_t result = 0;
+  for (size_t i = 0; i < 4; ++i) {
+    const unsigned char ch = static_cast<unsigned char>(text[pos + i]);
+    uint16_t nibble = 0;
+    if (ch >= '0' && ch <= '9') {
+      nibble = static_cast<uint16_t>(ch - '0');
+    } else if (ch >= 'A' && ch <= 'F') {
+      nibble = static_cast<uint16_t>(ch - 'A' + 10);
+    } else if (ch >= 'a' && ch <= 'f') {
+      nibble = static_cast<uint16_t>(ch - 'a' + 10);
+    } else {
+      return false;
+    }
+    result = static_cast<uint16_t>((result << 4) | nibble);
+  }
+
+  *value = result;
+  return true;
+}
+
+void AppendUtf8Codepoint(uint32_t codepoint, std::string* out) {
+  if (!out) return;
+
+  if (codepoint <= 0x7F) {
+    out->push_back(static_cast<char>(codepoint));
+    return;
+  }
+
+  if (codepoint <= 0x7FF) {
+    out->push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+    out->push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    return;
+  }
+
+  if (codepoint <= 0xFFFF) {
+    out->push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+    out->push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+    out->push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    return;
+  }
+
+  if (codepoint <= 0x10FFFF) {
+    out->push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+    out->push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+    out->push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+    out->push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+  }
+}
+
 bool DecodeJsonString(std::string_view text, size_t quote_pos, std::string* out, size_t* end_pos) {
   if (!out || !end_pos || quote_pos >= text.size() || text[quote_pos] != '"') return false;
 
@@ -124,9 +177,28 @@ bool DecodeJsonString(std::string_view text, size_t quote_pos, std::string* out,
         decoded.push_back('\t');
         break;
       case 'u':
-        if (i + 3 >= text.size()) return false;
-        i += 4;
-        decoded.push_back('?');
+        {
+          uint16_t code_unit = 0;
+          if (!ParseHex4(text, i, &code_unit)) return false;
+          i += 4;
+
+          uint32_t codepoint = code_unit;
+          if (code_unit >= 0xD800 && code_unit <= 0xDBFF) {
+            if (i + 6 > text.size() || text[i] != '\\' || text[i + 1] != 'u') return false;
+            uint16_t low_surrogate = 0;
+            if (!ParseHex4(text, i + 2, &low_surrogate)) return false;
+            if (low_surrogate < 0xDC00 || low_surrogate > 0xDFFF) return false;
+            i += 6;
+
+            codepoint = 0x10000 +
+                        ((static_cast<uint32_t>(code_unit - 0xD800) << 10) |
+                         static_cast<uint32_t>(low_surrogate - 0xDC00));
+          } else if (code_unit >= 0xDC00 && code_unit <= 0xDFFF) {
+            return false;
+          }
+
+          AppendUtf8Codepoint(codepoint, &decoded);
+        }
         break;
       default:
         return false;
@@ -139,31 +211,160 @@ bool DecodeJsonString(std::string_view text, size_t quote_pos, std::string* out,
 bool TryGetJsonStringField(std::string_view json, std::string_view field_name, std::string* value) {
   if (!value || field_name.empty()) return false;
 
-  std::string needle = "\"";
-  needle.append(field_name);
-  needle.push_back('"');
+  const auto skip_json_value =
+      [&](auto&& self, size_t pos, size_t* end_pos) -> bool {
+    if (!end_pos) return false;
 
-  size_t pos = 0;
-  while (true) {
-    pos = json.find(needle, pos);
-    if (pos == std::string_view::npos) return false;
+    pos = SkipJsonWhitespace(json, pos);
+    if (pos >= json.size()) return false;
 
-    size_t cursor = SkipJsonWhitespace(json, pos + needle.size());
-    if (cursor >= json.size() || json[cursor] != ':') {
-      pos += needle.size();
-      continue;
+    if (json[pos] == '"') {
+      std::string ignored;
+      return DecodeJsonString(json, pos, &ignored, end_pos);
     }
 
-    cursor = SkipJsonWhitespace(json, cursor + 1);
-    if (cursor >= json.size() || json[cursor] != '"') {
-      pos += needle.size();
-      continue;
+    if (json[pos] == '{') {
+      size_t cursor = pos + 1;
+      cursor = SkipJsonWhitespace(json, cursor);
+      if (cursor < json.size() && json[cursor] == '}') {
+        *end_pos = cursor + 1;
+        return true;
+      }
+
+      while (cursor < json.size()) {
+        if (json[cursor] != '"') return false;
+
+        std::string ignored_key;
+        size_t key_end = cursor;
+        if (!DecodeJsonString(json, cursor, &ignored_key, &key_end)) return false;
+        cursor = SkipJsonWhitespace(json, key_end);
+        if (cursor >= json.size() || json[cursor] != ':') return false;
+
+        size_t value_end = cursor;
+        if (!self(self, cursor + 1, &value_end)) return false;
+        cursor = SkipJsonWhitespace(json, value_end);
+        if (cursor >= json.size()) return false;
+        if (json[cursor] == '}') {
+          *end_pos = cursor + 1;
+          return true;
+        }
+        if (json[cursor] != ',') return false;
+        cursor = SkipJsonWhitespace(json, cursor + 1);
+      }
+
+      return false;
     }
 
-    size_t end_pos = cursor;
-    if (!DecodeJsonString(json, cursor, value, &end_pos)) return false;
+    if (json[pos] == '[') {
+      size_t cursor = pos + 1;
+      cursor = SkipJsonWhitespace(json, cursor);
+      if (cursor < json.size() && json[cursor] == ']') {
+        *end_pos = cursor + 1;
+        return true;
+      }
+
+      while (cursor < json.size()) {
+        size_t element_end = cursor;
+        if (!self(self, cursor, &element_end)) return false;
+        cursor = SkipJsonWhitespace(json, element_end);
+        if (cursor >= json.size()) return false;
+        if (json[cursor] == ']') {
+          *end_pos = cursor + 1;
+          return true;
+        }
+        if (json[cursor] != ',') return false;
+        cursor = SkipJsonWhitespace(json, cursor + 1);
+      }
+
+      return false;
+    }
+
+    if (json.compare(pos, 4, "true") == 0) {
+      *end_pos = pos + 4;
+      return true;
+    }
+    if (json.compare(pos, 5, "false") == 0) {
+      *end_pos = pos + 5;
+      return true;
+    }
+    if (json.compare(pos, 4, "null") == 0) {
+      *end_pos = pos + 4;
+      return true;
+    }
+
+    size_t cursor = pos;
+    if (json[cursor] == '-') ++cursor;
+    if (cursor >= json.size()) return false;
+
+    if (json[cursor] == '0') {
+      ++cursor;
+    } else {
+      if (!std::isdigit(static_cast<unsigned char>(json[cursor]))) return false;
+      while (cursor < json.size() && std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+        ++cursor;
+      }
+    }
+
+    if (cursor < json.size() && json[cursor] == '.') {
+      ++cursor;
+      if (cursor >= json.size() || !std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+        return false;
+      }
+      while (cursor < json.size() && std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+        ++cursor;
+      }
+    }
+
+    if (cursor < json.size() && (json[cursor] == 'e' || json[cursor] == 'E')) {
+      ++cursor;
+      if (cursor < json.size() && (json[cursor] == '+' || json[cursor] == '-')) ++cursor;
+      if (cursor >= json.size() || !std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+        return false;
+      }
+      while (cursor < json.size() && std::isdigit(static_cast<unsigned char>(json[cursor]))) {
+        ++cursor;
+      }
+    }
+
+    *end_pos = cursor;
     return true;
+  };
+
+  size_t cursor = SkipJsonWhitespace(json, 0);
+  if (cursor >= json.size() || json[cursor] != '{') return false;
+
+  cursor = SkipJsonWhitespace(json, cursor + 1);
+  if (cursor < json.size() && json[cursor] == '}') return false;
+
+  while (cursor < json.size()) {
+    if (json[cursor] != '"') return false;
+
+    std::string key;
+    size_t key_end = cursor;
+    if (!DecodeJsonString(json, cursor, &key, &key_end)) return false;
+
+    cursor = SkipJsonWhitespace(json, key_end);
+    if (cursor >= json.size() || json[cursor] != ':') return false;
+
+    size_t value_start = SkipJsonWhitespace(json, cursor + 1);
+    if (value_start >= json.size()) return false;
+
+    if (key == field_name && json[value_start] == '"') {
+      size_t value_end = value_start;
+      return DecodeJsonString(json, value_start, value, &value_end);
+    }
+
+    size_t value_end = value_start;
+    if (!skip_json_value(skip_json_value, value_start, &value_end)) return false;
+
+    cursor = SkipJsonWhitespace(json, value_end);
+    if (cursor >= json.size()) return false;
+    if (json[cursor] == '}') return false;
+    if (json[cursor] != ',') return false;
+    cursor = SkipJsonWhitespace(json, cursor + 1);
   }
+
+  return false;
 }
 
 std::wstring AsciiToWide(const std::string& value) {
