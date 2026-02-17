@@ -32,9 +32,17 @@ class ComPtr {
     if (ptr_) ptr_->Release();
   }
 
+  ComPtr(const ComPtr&) = delete;
+  ComPtr& operator=(const ComPtr&) = delete;
+
   T** operator&() { return &ptr_; }
   T* get() const { return ptr_; }
   T* operator->() const { return ptr_; }
+
+  void Attach(T* value) {
+    if (ptr_) ptr_->Release();
+    ptr_ = value;
+  }
 
  private:
   T* ptr_;
@@ -96,8 +104,9 @@ std::vector<BYTE> DecodeBase64(const std::string& value) {
 HRESULT DecodeImageToBitmap(const std::vector<BYTE>& image_data, UINT cx, HBITMAP* out_bitmap) {
   if (image_data.empty() || !out_bitmap) return E_INVALIDARG;
 
-  IStream* mem_stream = SHCreateMemStream(image_data.data(), static_cast<UINT>(image_data.size()));
-  if (!mem_stream) return E_FAIL;
+  ComPtr<IStream> mem_stream;
+  mem_stream.Attach(SHCreateMemStream(image_data.data(), static_cast<UINT>(image_data.size())));
+  if (!mem_stream.get()) return E_FAIL;
 
   ComPtr<IWICImagingFactory> factory;
   HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
@@ -105,9 +114,8 @@ HRESULT DecodeImageToBitmap(const std::vector<BYTE>& image_data, UINT cx, HBITMA
   if (FAILED(hr)) return hr;
 
   ComPtr<IWICBitmapDecoder> decoder;
-  hr = factory->CreateDecoderFromStream(mem_stream, nullptr, WICDecodeMetadataCacheOnLoad,
+  hr = factory->CreateDecoderFromStream(mem_stream.get(), nullptr, WICDecodeMetadataCacheOnLoad,
                                         &decoder);
-  mem_stream->Release();
   if (FAILED(hr)) return hr;
 
   ComPtr<IWICBitmapFrameDecode> frame;

@@ -23,7 +23,7 @@ Windows Explorer `.naiv4vibe` 缩略图处理器（In-proc COM DLL）。
 
 - CMake 3.20+
 - MSVC x64
-- `nlohmann/json`（header-only，需能 `#include <nlohmann/json.hpp>`）
+- 首次配置会通过 CMake `FetchContent` 自动下载 `nlohmann/json`
 
 ## 构建
 

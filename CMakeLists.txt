@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(naiv4vibe_thumbnail_provider LANGUAGES CXX)
 
+include(FetchContent)
+
 if(NOT WIN32)
   message(FATAL_ERROR "This project only supports Windows.")
 endif()
@@ -24,3 +26,12 @@ target_link_libraries(naiv4vibe_thumbnail_provider PRIVATE
 set_target_properties(naiv4vibe_thumbnail_provider PROPERTIES
   OUTPUT_NAME "Naiv4VibeThumbnailProvider"
 )
+
+
+FetchContent_Declare(
+  nlohmann_json
+  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+target_link_libraries(naiv4vibe_thumbnail_provider PRIVATE nlohmann_json::nlohmann_json)
