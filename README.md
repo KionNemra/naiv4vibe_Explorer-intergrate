@@ -27,14 +27,28 @@ Windows Explorer `.naiv4vibe` 缩略图处理器（In-proc COM DLL）。
 
 ## 构建
 
+> 先 `cd` 到仓库根目录（必须能看到 `CMakeLists.txt`）。
+
 ```powershell
+cd <你的仓库路径>\naiv4vibe_Explorer-intergrate
 cmake -S . -B build -A x64
 cmake --build build --config Release
+```
+
+或直接使用脚本（推荐，避免路径问题）：
+
+```powershell
+./scripts/build.ps1
 ```
 
 输出 DLL：
 
 - `build\Release\Naiv4VibeThumbnailProvider.dll`
+
+### 常见错误
+
+- `source directory ... does not appear to contain CMakeLists.txt`：说明当前目录不对。请先 `cd` 到仓库根目录再执行。
+- `.../build is not a directory`：通常是先执行了 `cmake --build build`，但还没先 `cmake -S . -B build -A x64` 配置生成。
 
 ## 安装/卸载
 
