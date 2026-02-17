@@ -172,10 +172,13 @@ HRESULT DecodeImageToBitmap(const std::vector<BYTE>& image_data, UINT cx, HBITMA
 
 }  // namespace
 
-VibeThumbnailProvider::VibeThumbnailProvider() : ref_count_(1), stream_(nullptr) {}
+VibeThumbnailProvider::VibeThumbnailProvider() : ref_count_(1), stream_(nullptr) {
+  ModuleAddRef();
+}
 
 VibeThumbnailProvider::~VibeThumbnailProvider() {
   if (stream_) stream_->Release();
+  ModuleRelease();
 }
 
 IFACEMETHODIMP VibeThumbnailProvider::QueryInterface(REFIID riid, void** ppv) {
@@ -228,7 +231,7 @@ IFACEMETHODIMP VibeThumbnailProvider::GetThumbnail(UINT cx, HBITMAP* phbmp, WTS_
     if (parsed.contains("thumbnail") && parsed["thumbnail"].is_string() && cx <= 512) {
       encoded_image = StripDataUrlPrefix(parsed["thumbnail"].get<std::string>());
     } else if (parsed.contains("image") && parsed["image"].is_string()) {
-      encoded_image = parsed["image"].get<std::string>();
+      encoded_image = StripDataUrlPrefix(parsed["image"].get<std::string>());
     } else if (parsed.contains("thumbnail") && parsed["thumbnail"].is_string()) {
       encoded_image = StripDataUrlPrefix(parsed["thumbnail"].get<std::string>());
     }

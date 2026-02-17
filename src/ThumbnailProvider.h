@@ -26,3 +26,6 @@ class VibeThumbnailProvider final : public IThumbnailProvider, public IInitializ
 };
 
 extern const CLSID CLSID_VibeThumbnailProvider;
+
+void ModuleAddRef();
+void ModuleRelease();

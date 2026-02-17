@@ -10,7 +10,7 @@ Windows Explorer `.naiv4vibe` 缩略图处理器（In-proc COM DLL）。
 - `IThumbnailProvider::GetThumbnail`：
   1. 读取 UTF-8 JSON。
   2. 优先取 `thumbnail`（`cx <= 512`），否则取 `image`。
-  3. 去除 `data:image/...;base64,` 前缀（若存在）。
+  3. 对 `thumbnail` / `image` 都兼容去除 `data:image/...;base64,` 前缀（若存在）。
   4. `CryptStringToBinaryW` 解 base64。
   5. `SHCreateMemStream` 建内存流。
   6. WIC 解码 + 等比缩放为 `cx`，输出 `HBITMAP`，`WTSAT_ARGB`。

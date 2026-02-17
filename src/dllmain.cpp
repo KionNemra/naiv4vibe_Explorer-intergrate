@@ -11,7 +11,7 @@
 
 namespace {
 
-long g_module_ref_count = 0;
+volatile long g_module_ref_count = 0;
 HINSTANCE g_instance = nullptr;
 
 const wchar_t* kThumbnailProviderClsid = L"{4D2AA77E-F513-4E30-A034-E62CA8C2A9D8}";
@@ -117,6 +117,14 @@ BOOL APIENTRY DllMain(HMODULE hmodule, DWORD reason, LPVOID) {
     DisableThreadLibraryCalls(hmodule);
   }
   return TRUE;
+}
+
+void ModuleAddRef() {
+  InterlockedIncrement(&g_module_ref_count);
+}
+
+void ModuleRelease() {
+  InterlockedDecrement(&g_module_ref_count);
 }
 
 STDAPI DllCanUnloadNow() {
