@@ -83,6 +83,16 @@ size_t SkipJsonWhitespace(std::string_view text, size_t pos) {
   return pos;
 }
 
+
+size_t SkipOptionalUtf8Bom(std::string_view text, size_t pos) {
+  if (pos + 3 <= text.size() && static_cast<unsigned char>(text[pos]) == 0xEF &&
+      static_cast<unsigned char>(text[pos + 1]) == 0xBB &&
+      static_cast<unsigned char>(text[pos + 2]) == 0xBF) {
+    return pos + 3;
+  }
+  return pos;
+}
+
 bool ParseHex4(std::string_view text, size_t pos, uint16_t* value) {
   if (!value || pos + 4 > text.size()) return false;
 
@@ -331,6 +341,8 @@ bool TryGetJsonStringField(std::string_view json, std::string_view field_name, s
   };
 
   size_t cursor = SkipJsonWhitespace(json, 0);
+  cursor = SkipOptionalUtf8Bom(json, cursor);
+  cursor = SkipJsonWhitespace(json, cursor);
   if (cursor >= json.size() || json[cursor] != '{') return false;
 
   cursor = SkipJsonWhitespace(json, cursor + 1);
