@@ -1,29 +1,65 @@
 # naiv4vibe_Explorer-intergrate
-THIS WILL BE 90% vibe coding project.
-创建 VS x64 C++ 项目：ATL In-proc COM DLL（或 WRL/C++ COM 手写也行，但 ATL 最省事）
 
-定义 COM 类 VibeThumbnailProvider：实现 IInitializeWithStream + IThumbnailProvider
+Windows Explorer `.naiv4vibe` 缩略图处理器（In-proc COM DLL）。
 
-在 Initialize 里保存 IStream*；在 GetThumbnail 里：
+## 实现概览
 
-读 JSON（UTF-8）
+`VibeThumbnailProvider` 实现：
 
-取 thumbnail 或 image
+- `IInitializeWithStream`：接收 Explorer 传入文件流。
+- `IThumbnailProvider::GetThumbnail`：
+  1. 读取 UTF-8 JSON。
+  2. 优先取 `thumbnail`（`cx <= 512`），否则取 `image`。
+  3. 对 `thumbnail` / `image` 都兼容去除 `data:image/...;base64,` 前缀（若存在）。
+  4. `CryptStringToBinaryW` 解 base64。
+  5. `SHCreateMemStream` 建内存流。
+  6. WIC 解码 + 等比缩放为 `cx`，输出 `HBITMAP`，`WTSAT_ARGB`。
 
-处理 data URL 前缀
+注册时写入：
 
-CryptStringToBinaryW base64 解码
+- `HKCR\.naiv4vibe\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96} = {4D2AA77E-F513-4E30-A034-E62CA8C2A9D8}`
 
-SHCreateMemStream 包成 IStream*
+## 依赖
 
-WIC 解码/缩放到 cx，输出 HBITMAP，alpha=ARGB
+- CMake 3.20+
+- MSVC x64
+- 首次配置会通过 CMake `FetchContent` 自动下载 `nlohmann/json`
 
-实现注册表写入（DllRegisterServer）：
+## 构建
 
-HKCR\.naiv4vibe\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96} → {YourCLSID}
+> 先 `cd` 到仓库根目录（必须能看到 `CMakeLists.txt`）。
 
-提供 scripts/install.ps1 / scripts/uninstall.ps1：
+```powershell
+cd <你的仓库路径>\naiv4vibe_Explorer-intergrate
+cmake -S . -B build -A x64
+cmake --build build --config Release
+```
 
-调用对应位数的 regsvr32 /s your.dll
+或直接使用脚本（推荐，避免路径问题）：
 
-提供简单测试说明：清空缩略图缓存/重启 Explorer 后看效果
+```powershell
+./scripts/build.ps1
+```
+
+输出 DLL：
+
+- `build\Release\Naiv4VibeThumbnailProvider.dll`
+
+### 常见错误
+
+- `source directory ... does not appear to contain CMakeLists.txt`：说明当前目录不对。请先 `cd` 到仓库根目录再执行。
+- `.../build is not a directory`：通常是先执行了 `cmake --build build`，但还没先 `cmake -S . -B build -A x64` 配置生成。
+
+## 安装/卸载
+
+```powershell
+# 管理员 PowerShell
+./scripts/install.ps1 -DllPath .\build\Release\Naiv4VibeThumbnailProvider.dll
+./scripts/uninstall.ps1 -DllPath .\build\Release\Naiv4VibeThumbnailProvider.dll
+```
+
+## 调试建议
+
+- 先卸载旧版本再安装新 DLL。
+- 清空缩略图缓存后重启 Explorer。
+- 观察 `.naiv4vibe` 在大/小图标视图下的缩略图是否正常。
