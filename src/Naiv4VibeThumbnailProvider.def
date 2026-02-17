@@ -1,0 +1,7 @@
+LIBRARY "Naiv4VibeThumbnailProvider"
+
+EXPORTS
+  DllCanUnloadNow
+  DllGetClassObject
+  DllRegisterServer
+  DllUnregisterServer
