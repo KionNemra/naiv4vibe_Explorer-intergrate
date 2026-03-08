@@ -50,6 +50,7 @@ cmake --build build --config Release
 - `source directory ... does not appear to contain CMakeLists.txt`：说明当前目录不对。请先 `cd` 到仓库根目录再执行。
 - `.../build is not a directory`：通常是先执行了 `cmake --build build`，但还没先 `cmake -S . -B build -A x64` 配置生成。
 - `nlohmann_json not found locally, falling back to FetchContent` 后长时间无响应：请更新到当前版本后重新配置，已不再依赖在线下载。
+- `regsvr32` 退出码 `3`：除 DLL 路径错误外，也可能是缺少依赖（常见为 VC++ 运行库）。建议先在管理员 PowerShell 手动运行 `regsvr32 <dll>` 查看完整错误弹窗。
 
 ## 安装/卸载
 

@@ -8,7 +8,14 @@ if (-not $resolvedDllPath) {
 }
 $resolvedDllPath = $resolvedDllPath.Path
 
-$regsvr32 = Join-Path $env:WINDIR "System32\\regsvr32.exe"
+$regsvr32Candidates = @(
+  (Join-Path $env:WINDIR "System32\regsvr32.exe"),
+  (Join-Path $env:WINDIR "Sysnative\regsvr32.exe")
+)
+$regsvr32 = $regsvr32Candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $regsvr32) {
+  throw "regsvr32.exe not found under $env:WINDIR\\System32 or $env:WINDIR\\Sysnative"
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -18,12 +25,12 @@ if (-not $runningAsAdmin) {
 }
 
 Write-Host "Registering $resolvedDllPath using $regsvr32"
-$proc = Start-Process -FilePath $regsvr32 -ArgumentList @('/s', $resolvedDllPath) -Wait -PassThru -NoNewWindow
-$exitCode = $proc.ExitCode
+& $regsvr32 /s $resolvedDllPath
+$exitCode = $LASTEXITCODE
 
 if ($exitCode -ne 0) {
   $commonHint = switch ($exitCode) {
-    3 { "Path not found. Confirm DLL path is correct." }
+    3 { "Path not found. Confirm DLL path and dependent runtime DLLs are available." }
     5 { "Access denied. Re-run in Administrator PowerShell." }
     126 { "Dependent module was not found. Install required VC++ runtime / check dependencies." }
     193 { "Bad EXE format. Usually 32/64-bit mismatch." }
